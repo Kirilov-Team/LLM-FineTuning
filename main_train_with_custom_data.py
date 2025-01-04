@@ -1,9 +1,9 @@
-from transformers import AutoTokenizer, AutoModelForCausalLM, Trainer, TrainingArguments
+import tensorflow as tf
+from transformers import TFAutoModelForCausalLM, AutoTokenizer
 from datasets import Dataset
 
 # Step 1: Prepare the Dataset
 data = [
-
     {"input": "Who made you?", "output": "I was made by Kirilov"},
 ]
 
@@ -12,70 +12,74 @@ dataset = Dataset.from_list(data)
 
 # Step 2: Preprocess the Data
 def preprocess(data):
-    inputs = tokenizer(data["input"], truncation=True, padding="max_length", max_length=128, return_tensors="pt")
-    outputs = tokenizer(data["output"], truncation=True, padding="max_length", max_length=128, return_tensors="pt")
+    inputs = tokenizer(
+        data["input"],
+        truncation=True,
+        padding="max_length",
+        max_length=128,
+        return_tensors="tf"
+    )
+    outputs = tokenizer(
+        data["output"],
+        truncation=True,
+        padding="max_length",
+        max_length=128,
+        return_tensors="tf"
+    )
     return {
-        "input_ids": inputs["input_ids"].squeeze(),
-        "attention_mask": inputs["attention_mask"].squeeze(),
-        "labels": outputs["input_ids"].squeeze()
+        "input_ids": inputs["input_ids"][0],
+        "attention_mask": inputs["attention_mask"][0],
+        "labels": outputs["input_ids"][0],
     }
-
 
 # Load tokenizer
 model_name = "gpt2"  # You can replace this with a different model
 
-# Load tokenizer
 print("Loading tokenizer...")
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 
 # Add a padding token if necessary
 if tokenizer.pad_token is None:
-    tokenizer.add_special_tokens({'pad_token': '[PAD]'})  # Add [PAD] as the padding token
+    tokenizer.add_special_tokens({'pad_token': '[PAD]'})
 
-# Load model
+# Tokenize and preprocess the dataset
+print("Preprocessing dataset...")
+tokenized_data = [preprocess(example) for example in dataset]
+
+# Convert to TensorFlow dataset
+tf_dataset = tf.data.Dataset.from_generator(
+    lambda: tokenized_data,
+    output_signature={
+        "input_ids": tf.TensorSpec(shape=(128,), dtype=tf.int32),
+        "attention_mask": tf.TensorSpec(shape=(128,), dtype=tf.int32),
+        "labels": tf.TensorSpec(shape=(128,), dtype=tf.int32),
+    }
+)
+
+tf_dataset = tf_dataset.batch(4).shuffle(len(tokenized_data))
+
+# Step 3: Load the Model
 print("Loading model...")
-model = AutoModelForCausalLM.from_pretrained(model_name)
+model = TFAutoModelForCausalLM.from_pretrained(model_name)
 
 # Resize model embeddings if new tokens were added
 model.resize_token_embeddings(len(tokenizer))
 
-# Tokenize the dataset
-print("Tokenizing dataset...")
-tokenized_dataset = dataset.map(preprocess, batched=False)
+# Compile the model
+optimizer = tf.keras.optimizers.Adam(learning_rate=5e-5)
+loss = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
+model.compile(optimizer=optimizer, loss=loss)
 
-
-# Step 4: Define Training Arguments
-training_args = TrainingArguments(
-    output_dir="./results",
-    num_train_epochs=1000,
-    per_device_train_batch_size=4,
-    save_steps=10,
-    save_total_limit=2,
-    logging_dir="./logs",
-    logging_steps=5,
-    evaluation_strategy="no",
-    learning_rate=5e-5,
-    weight_decay=0.01,
-)
-
-# Step 5: Define Trainer
-trainer = Trainer(
-    model=model,
-    args=training_args,
-    train_dataset=tokenized_dataset,
-    tokenizer=tokenizer
-)
-
-# Step 6: Train the Model
+# Step 4: Train the Model
 print("Starting training...")
-trainer.train()
+model.fit(tf_dataset, epochs=1000)
 
-# Step 7: Save the Fine-Tuned Model
+# Step 5: Save the Fine-Tuned Model
 print("Saving the model...")
 model.save_pretrained("./fine_tuned_model")
 tokenizer.save_pretrained("./fine_tuned_model")
 
-# Step 8: Test the Fine-Tuned Model
+# Step 6: Test the Fine-Tuned Model
 from transformers import pipeline
 
 print("Testing the model...")
