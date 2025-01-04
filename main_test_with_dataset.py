@@ -7,20 +7,20 @@ from rich.text import Text
 
 import warnings
 
-# Suppress warnings in this block
+# kapcsold ki a warningokat
 with warnings.catch_warnings():
     pass
 
-# Initialize rich console
+# indits el a rich konzolt
 console = Console()
 
-# Step 1: Load Dataset
+# elso lepes : töltsd be a datasetet
 console.log("Loading dataset...", style="bold blue")
 dataset = load_dataset("AlekseyKorshuk/persona-chat", split="train")  # Use train split
 data = [{"input": example["utterances"][0]["history"][-1], "output": example["utterances"][0]["candidates"][0]} for example in dataset]
 dataset = Dataset.from_list(data)
 
-# Step 2: Preprocess the Data
+# masodik lepes : dolgozd fel az adatokat
 console.log("Preprocessing data...", style="bold green")
 
 
@@ -34,7 +34,7 @@ def preprocess(data):
     }
 
 
-# Step 3: Load Tokenizer and Model
+# harmadik lépés : töltsd be a modelt és a tokenizert
 model_name = "gpt2"
 console.log(f"Loading tokenizer and model: {model_name}...", style="bold yellow")
 tokenizer = AutoTokenizer.from_pretrained(model_name)
@@ -45,13 +45,13 @@ if tokenizer.pad_token is None:
 model = AutoModelForCausalLM.from_pretrained(model_name)
 model.resize_token_embeddings(len(tokenizer))
 
-# Tokenize the dataset
+# az datasetet tokenizold
 console.log("Tokenizing dataset...", style="bold cyan")
 tokenized_dataset = dataset.map(preprocess, batched=False)
 
 os.system("cls")
 
-# Step 4: Define Training Arguments
+# lépés 4 : add meg a képzési cuccokat
 console.log("Setting up training arguments...", style="bold magenta")
 training_args = TrainingArguments(
     output_dir="./results",
@@ -66,7 +66,7 @@ training_args = TrainingArguments(
     weight_decay=0.01,
 )
 
-# Step 5: Define Trainer
+# lépés öt : készülj elő
 console.log("Initializing Trainer...", style="bold white")
 trainer = Trainer(
     model=model,
@@ -75,16 +75,16 @@ trainer = Trainer(
     tokenizer=tokenizer
 )
 
-# Step 6: Train the Model
+# 6. lepes : kezd el!
 console.log("Starting training...", style="bold green")
 trainer.train()
 
-# Step 7: Save the Fine-Tuned Model
+# Step 7: mentsd el
 console.log("Saving the fine-tuned model...", style="bold yellow")
 model.save_pretrained("./fine_tuned_model")
 tokenizer.save_pretrained("./fine_tuned_model")
 
-# Step 8: Test the Fine-Tuned Model
+# Step 8: teszteld
 from transformers import pipeline
 
 console.log("Testing the fine-tuned model...", style="bold cyan")
